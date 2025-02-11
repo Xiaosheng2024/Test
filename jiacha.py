@@ -14,7 +14,6 @@ from PyQt5.QtWidgets import (
     QTableWidget, QTableWidgetItem, QListWidget, QListWidgetItem, QAbstractItemView
 )
 from PyQt5.QtCore import QTimer, QDateTime, QThread, pyqtSignal, Qt
-
 # 如果使用 Selenium 自动抓取 token，则需要安装 Selenium 和 ChromeDriver
 try:
     from selenium import webdriver

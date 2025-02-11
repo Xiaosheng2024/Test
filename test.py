@@ -35,6 +35,9 @@ except ImportError:
 # 全局变量，用于缓存上一次成功的 token
 #############################################
 current_token = None
+# 用于记录用户手动切换的模式
+# manual_session_type 为 None 表示自动判断，否则 0 表示白天模式，1 表示夜盘模式
+manual_session_type = None
 
 # ==================== API配置 ====================
 EXCHANGE_RATE_KEY = "9be1d1309bdcd99529c2b9af"  # 离岸人民币汇率 API Key
@@ -65,7 +68,7 @@ def get_cnh_rate():
         return None
 
 #############################################
-# 第一部分：数据抓取相关函数
+# 数据抓取相关函数
 #############################################
 def get_contract_data(code):
     """
@@ -115,8 +118,7 @@ def generate_anti_params():
 def fetch_latest_token_selenium():
     """
     使用 Selenium 自动提取 token。
-    为避免抓取到“失败的” token（即包含 “+” 的 token），
-    使用正则提取 URL 中 token 后调用 unquote，并过滤掉包含“+”的 token。
+    避免抓取到包含 "+" 的无效 token。
     """
     try:
         options = Options()
@@ -165,10 +167,7 @@ def fetch_latest_token_selenium():
         return None
 
 def fetch_latest_token():
-    """
-    自动获取最新 token。
-    优先使用 Selenium 方法（如果可用），否则返回 None。
-    """
+    """优先使用 Selenium 方法获取 token"""
     if SELENIUM_AVAILABLE:
         token = fetch_latest_token_selenium()
         return token
@@ -178,9 +177,12 @@ def fetch_latest_token():
 
 def get_exchange_rate_data():
     """
-    获取港交所的汇率数据：返回字典 { con_l: se }
+    获取港交所汇率数据，返回字典 { con_l: se }。
+    若用户手动设置汇率模式则优先使用，否则根据香港时间自动判断：
+      - 工作日 7:00～19:00 使用白天汇率（type=0），其余时段（夜盘）使用夜盘汇率（type=1）
+      - 周末默认使用白天汇率（type=0）
     """
-    global current_token
+    global current_token, manual_session_type
     headers = {
         'User-Agent': ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"),
@@ -200,10 +202,13 @@ def get_exchange_rate_data():
         s.get('https://www1.hkex.com.hk/hkexwidget/apis/seccheck.jsp', headers=headers, timeout=10)
         
         hk_time = get_hk_time()
-        if hk_time.weekday() in [5, 6]:
-            session_type = 0
+        if manual_session_type is not None:
+            session_type = manual_session_type
         else:
-            session_type = 1 if (hk_time.hour >= 7 and hk_time.hour < 19) else 0
+            if hk_time.weekday() in [5, 6]:
+                session_type = 0
+            else:
+                session_type = 0 if (hk_time.hour >= 7 and hk_time.hour < 19) else 1
 
         token_to_use = current_token
         if not token_to_use:
@@ -281,7 +286,7 @@ def get_exchange_rate_data():
             raise Exception("尝试 10 次后仍未能成功刷新汇率数据。")
 
 #############################################
-# 第二部分：后台刷新数据的工作线程
+# 后台刷新数据的工作线程
 #############################################
 class RefreshWorker(QThread):
     refresh_finished = pyqtSignal(dict, dict)  # 返回 contract_data 与 exchange_rates
@@ -303,12 +308,11 @@ class RefreshWorker(QThread):
                     local_contract_data[code] = {
                         "name": cname,
                         "price": price,
-                        "update_time": update_time  # 虽然不在表格显示，但保留以供参考
+                        "update_time": update_time
                     }
                 else:
                     print(f"数据获取失败：{contracts[code]}")
             local_exchange_rates = get_exchange_rate_data()
-            # 获取离岸人民币汇率并加入到汇率字典中
             cnh_rate = get_cnh_rate()
             if cnh_rate is not None:
                 local_exchange_rates["离岸人民币汇率"] = cnh_rate
@@ -317,7 +321,7 @@ class RefreshWorker(QThread):
             self.error_occurred.emit(str(e))
 
 #############################################
-# 第三部分：基于 PyQt5 的图形界面
+# 主窗口（基于 PyQt5 的图形界面）
 #############################################
 class MainWindow(QWidget):
     def __init__(self):
@@ -326,10 +330,28 @@ class MainWindow(QWidget):
         self.contract_data = {}   # 合约数据
         self.exchange_rates = {}  # 汇率数据
         self.refresh_running = False
-        # 用于保存用户手动选中的汇率键名
         self.selected_exchange_keys = set()
+        # 初始汇率模式为自动（可选值："auto"、"day"、"night"）
+        self.hkex_mode = "auto"
 
-        # 1. 沪金合约信息（表格部分仅显示合约名称与价格）
+        # --- 新增：最顶部的汇率模式切换区域 ---
+        self.btn_toggle_hkex_mode = QPushButton("切换汇率模式")
+        self.btn_toggle_hkex_mode.setMinimumWidth(100)
+        self.btn_toggle_hkex_mode.setMinimumHeight(30)
+        self.btn_toggle_hkex_mode.clicked.connect(self.toggle_hkex_mode)
+        self.label_hkex_mode = QLabel("当前模式：自动")
+        self.label_hkex_mode.setAlignment(Qt.AlignCenter)
+        # 设置明显的背景和边框，确保区域醒目
+        mode_top_layout = QHBoxLayout()
+        mode_top_layout.addWidget(self.btn_toggle_hkex_mode)
+        mode_top_layout.addWidget(self.label_hkex_mode)
+        mode_top_layout.addStretch()
+        self.top_mode_box = QGroupBox("【汇率模式切换 - 放置在最顶部】")
+        self.top_mode_box.setLayout(mode_top_layout)
+        self.top_mode_box.setStyleSheet("QGroupBox { background-color: lightyellow; border: 2px solid gray; }")
+        self.top_mode_box.setMinimumHeight(60)
+
+        # --- 沪金合约信息区域 ---
         self.table_sh = QTableWidget()
         self.table_sh.setColumnCount(2)
         self.table_sh.setHorizontalHeaderLabels(["合约名称", "价格"])
@@ -337,12 +359,13 @@ class MainWindow(QWidget):
         sh_layout = QVBoxLayout()
         sh_layout.addWidget(self.table_sh)
         self.group_sh.setLayout(sh_layout)
+        self.group_sh.setFixedHeight(200)
 
-        # 2. 选择汇率列表（缩小宽度）
+        # --- 汇率列表区域 ---
         self.list_rate = QListWidget()
         self.list_rate.setSelectionMode(QAbstractItemView.NoSelection)
         self.list_rate.itemChanged.connect(self.on_rate_item_changed)
-        self.list_rate.setFixedWidth(200)  # 固定较窄的宽度
+        self.list_rate.setFixedWidth(200)
         self.label_rate = QLabel("选择汇率（可多选）：")
         rate_layout = QVBoxLayout()
         rate_layout.addWidget(self.label_rate)
@@ -350,7 +373,7 @@ class MainWindow(QWidget):
         rate_widget = QWidget()
         rate_widget.setLayout(rate_layout)
 
-        # 3. 伦敦金信息（放在选择汇率列表的右侧）
+        # --- 伦敦金信息区域 ---
         self.label_ld_price = QLabel("伦敦金价格：N/A")
         self.label_comex_price = QLabel("COMEX价格：N/A")
         self.label_ld_spread = QLabel("伦敦金价差：N/A")
@@ -361,13 +384,13 @@ class MainWindow(QWidget):
         ld_layout.addWidget(self.label_ld_spread)
         self.group_ld.setLayout(ld_layout)
 
-        # 4. 将“选择汇率”与“伦敦金信息”放在同一水平布局中
+        # --- 底部：汇率列表与伦敦金信息区域 ---
         bottom_h_layout = QHBoxLayout()
         bottom_h_layout.addWidget(rate_widget)
         bottom_h_layout.addWidget(self.group_ld)
         bottom_h_layout.addStretch()
 
-        # 5. 底部按钮与最后更新时间显示
+        # --- 自动刷新与计算按钮区域 ---
         self.btn_refresh = QPushButton("刷新数据")
         self.btn_refresh.clicked.connect(self.start_refresh_worker)
         self.btn_toggle_auto = QPushButton("开始自动刷新")
@@ -379,28 +402,29 @@ class MainWindow(QWidget):
         self.spin_interval.valueChanged.connect(lambda x: self.auto_timer.setInterval(x * 1000))
         self.btn_calc = QPushButton("计算价差")
         self.btn_calc.clicked.connect(self.calculate_spread)
-        self.label_last_time = QLabel("最后更新时间：N/A")
-        # 设置更新时间标签右对齐，显示在窗口底部右侧
-        self.label_last_time.setAlignment(Qt.AlignRight)
-        btn_layout = QHBoxLayout()
-        btn_layout.addWidget(self.btn_refresh)
-        btn_layout.addWidget(self.btn_toggle_auto)
-        btn_layout.addWidget(QLabel("自动刷新间隔:"))
-        btn_layout.addWidget(self.spin_interval)
-        btn_layout.addWidget(self.btn_calc)
+        auto_refresh_layout = QHBoxLayout()
+        auto_refresh_layout.addWidget(self.btn_refresh)
+        auto_refresh_layout.addWidget(self.btn_toggle_auto)
+        auto_refresh_layout.addWidget(QLabel("自动刷新间隔:"))
+        auto_refresh_layout.addWidget(self.spin_interval)
+        auto_refresh_layout.addWidget(self.btn_calc)
+        auto_refresh_layout.addStretch()
 
-        # 6. 整体主布局：先放沪金合约信息表格，再放汇率选择和伦敦金信息，最后放按钮和更新时间标签
+        # --- 最后更新时间显示 ---
+        self.label_last_time = QLabel("最后更新时间：N/A")
+        self.label_last_time.setAlignment(Qt.AlignRight)
+
+        # --- 整体主布局 ---
         main_layout = QVBoxLayout()
+        # 将汇率模式切换区域放在最顶部
+        main_layout.addWidget(self.top_mode_box)
         main_layout.addWidget(self.group_sh)
         main_layout.addLayout(bottom_h_layout)
-        main_layout.addLayout(btn_layout)
+        main_layout.addLayout(auto_refresh_layout)
         main_layout.addWidget(self.label_last_time)
         self.setLayout(main_layout)
 
-        # 设置较大的初始窗口尺寸
         self.resize(1000, 600)
-
-        # 自动刷新定时器
         self.auto_timer = QTimer(self)
         self.auto_timer.setInterval(self.spin_interval.value() * 1000)
         self.auto_timer.timeout.connect(self.start_refresh_worker)
@@ -419,8 +443,6 @@ class MainWindow(QWidget):
     def on_refresh_finished(self, contract_data, exchange_rates):
         self.contract_data = contract_data
         self.exchange_rates = exchange_rates
-
-        # 更新汇率列表：如果用户已有手动选择，则保留，否则默认仅选中“离岸人民币汇率”
         self.list_rate.blockSignals(True)
         self.list_rate.clear()
         for key, rate in self.exchange_rates.items():
@@ -439,7 +461,6 @@ class MainWindow(QWidget):
             self.list_rate.addItem(item)
         self.list_rate.blockSignals(False)
 
-        # 更新伦敦金信息
         if "JO_92233" in self.contract_data:
             ld_price = self.contract_data["JO_92233"]["price"]
             self.label_ld_price.setText(f"伦敦金价格：{ld_price}")
@@ -451,7 +472,6 @@ class MainWindow(QWidget):
         else:
             self.label_comex_price.setText("COMEX价格：N/A")
 
-        # 更新沪金合约表格（只写入基本2列信息：合约名称和价格）
         sh_codes = ["JO_165751", "JO_165753", "JO_165755"]
         sh_data = []
         for code in sh_codes:
@@ -464,11 +484,8 @@ class MainWindow(QWidget):
             self.table_sh.setItem(row, 0, QTableWidgetItem(contract["name"]))
             self.table_sh.setItem(row, 1, QTableWidgetItem(str(contract["price"])))
 
-        # 同时计算并填写沪金合约的价差信息（额外列）
         self.calculate_spread_sh()
-        # 计算伦敦金与 COMEX 价差（显示在右侧伦敦金信息区域）
         self.calculate_spread_ld()
-
         current_time_str = QDateTime.currentDateTime().toString("yyyy-MM-dd HH:mm:ss")
         self.label_last_time.setText(f"最后更新时间：{current_time_str}")
 
@@ -479,7 +496,6 @@ class MainWindow(QWidget):
         self.refresh_running = False
 
     def on_rate_item_changed(self, item):
-        # 当汇率选中状态变化时，记录用户选择并更新沪金合约表格中的价差列
         self.selected_exchange_keys = set()
         for i in range(self.list_rate.count()):
             it = self.list_rate.item(i)
@@ -489,7 +505,6 @@ class MainWindow(QWidget):
         self.calculate_spread_sh()
 
     def calculate_spread_ld(self):
-        # 计算伦敦金与 COMEX 之间的价差
         if "JO_92233" not in self.contract_data or "JO_12552" not in self.contract_data:
             self.label_ld_spread.setText("伦敦金价差：N/A")
             return
@@ -501,15 +516,9 @@ class MainWindow(QWidget):
         self.label_last_time.setText(f"最后更新时间：{current_time_str}")
 
     def calculate_spread_sh(self):
-        """
-        根据左侧选中的汇率，为沪金合约表格增加额外列显示价差，
-        计算公式示例：每行价差 = 合约价格 - (COMEX价格 * 汇率 / 31.103)
-        """
         if "JO_12552" not in self.contract_data:
             return
         comex_price = self.contract_data["JO_12552"]["price"]
-
-        # 收集被选中的汇率
         selected_rates = {}
         for i in range(self.list_rate.count()):
             item = self.list_rate.item(i)
@@ -517,16 +526,12 @@ class MainWindow(QWidget):
                 key = item.text().split(" : ")[0]
                 rate = item.data(Qt.UserRole)
                 selected_rates[key] = rate
-
-        base_columns = 2  # 原有的合约名称和价格
+        base_columns = 2
         extra_columns = len(selected_rates)
         total_columns = base_columns + extra_columns
-
-        # 更新表头：基本信息 + 每个选中汇率
         headers = ["合约名称", "价格"] + list(selected_rates.keys())
         self.table_sh.setColumnCount(total_columns)
         self.table_sh.setHorizontalHeaderLabels(headers)
-
         row_count = self.table_sh.rowCount()
         for row in range(row_count):
             price_item = self.table_sh.item(row, 1)
@@ -541,12 +546,10 @@ class MainWindow(QWidget):
                 spread = price - (comex_price * rate_value / 31.103)
                 self.table_sh.setItem(row, col, QTableWidgetItem(f"{spread:.4f}"))
                 col += 1
-
         current_time_str = QDateTime.currentDateTime().toString("yyyy-MM-dd HH:mm:ss")
         self.label_last_time.setText(f"最后更新时间：{current_time_str}")
 
     def calculate_spread(self):
-        """同时计算伦敦金和沪金的价差信息"""
         self.calculate_spread_ld()
         self.calculate_spread_sh()
 
@@ -562,9 +565,20 @@ class MainWindow(QWidget):
             self.btn_toggle_auto.setText("开始自动刷新")
             QMessageBox.information(self, "自动刷新", "自动刷新已停止。")
 
-#############################################
-# 主程序入口
-#############################################
+    def toggle_hkex_mode(self):
+        global manual_session_type
+        if self.hkex_mode == "auto":
+            self.hkex_mode = "day"
+            manual_session_type = 0
+        elif self.hkex_mode == "day":
+            self.hkex_mode = "night"
+            manual_session_type = 1
+        else:
+            self.hkex_mode = "auto"
+            manual_session_type = None
+        self.label_hkex_mode.setText(f"当前模式：{'自动' if self.hkex_mode=='auto' else ('白天' if self.hkex_mode=='day' else '夜盘')}")
+        self.start_refresh_worker()
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()
