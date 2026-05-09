@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ model.name }} - 详情</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+<div class="container mt-4">
+    <a href="/" class="btn btn-secondary mb-3">返回列表</a>
+    <div class="card">
+        <div class="row g-0">
+            <!-- 图片展示 -->
+            <div class="col-md-4">
+                {% if model.image %}
+                <img src="/{{ model.image }}" class="img-fluid rounded-start" style="height:100%;object-fit:cover;">
+                {% else %}
+                <div class="bg-light d-flex align-items-center justify-content-center" style="height:400px;">
+                    <span class="text-muted">暂无图片</span>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- 信息展示 -->
+            <div class="col-md-8">
+                <div class="card-body">
+                    <h3 class="card-title">{{ model.name }} <span class="badge bg-primary">{{ model.model_code or '无编号' }}</span></h3>
+                    <p class="card-text"><strong>性别：</strong>{{ model.gender }}</p>
+                    <p class="card-text"><strong>年龄：</strong>{{ model.age or '无' }}</p>
+                    <p class="card-text"><strong>电话：</strong>{{ model.phone or '无' }}</p>
+                    <p class="card-text"><strong>发长：</strong>{{ model.hair_length or '无' }}</p>
+                    <p class="card-text"><strong>发色：</strong>{{ model.hair_color or '无' }}</p>
+                    <p class="card-text"><strong>标签：</strong>{{ model.tags or '无' }}</p>
+                    <p class="card-text"><strong>备注：</strong>{{ model.note or '无' }}</p>
+
+                    <!-- 女模发质信息 -->
+                    {% if model.gender == '女' %}
+                    <div class="mt-4">
+                        <h5 class="text-primary">女模发质信息</h5>
+                        <table class="table table-sm">
+                            <tr><td>3年内烫过次数</td><td>{{ model.female_hair_perm_3y or '无' }}</td></tr>
+                            <tr><td>3年内染过次数</td><td>{{ model.female_hair_dye_3y or '无' }}</td></tr>
+                            <tr><td>是否挑染</td><td>{{ model.female_hair_gradient or '无' }}</td></tr>
+                            <tr><td>染过颜色类型</td><td>{{ model.female_hair_dye_type or '无' }}</td></tr>
+                            <tr><td>是否漂过</td><td>{{ model.female_hair_bleach or '无' }}</td></tr>
+                            <tr><td>是否拉直/柔顺/软化</td><td>{{ model.female_hair_straight or '无' }}</td></tr>
+                            <tr><td>能否接受染发</td><td>{{ model.female_accept_dye or '无' }}</td></tr>
+                            <tr><td>能否接受烫发</td><td>{{ model.female_accept_perm or '无' }}</td></tr>
+                            <tr><td>能否接受漂发</td><td>{{ model.female_accept_bleach or '无' }}</td></tr>
+                            <tr><td>发质</td><td>{{ model.female_hair_hardness or '无' }}</td></tr>
+                            <tr><td>是否自然卷</td><td>{{ model.female_hair_curl or '无' }}</td></tr>
+                            <tr><td>最多接受修剪位置</td><td>{{ model.female_hair_cut or '无' }}</td></tr>
+                            <tr><td>常用夹板/电棒</td><td>{{ model.female_hair_iron or '无' }}</td></tr>
+                            <tr><td>是否烫发根</td><td>{{ model.female_hair_root_perm or '无' }}</td></tr>
+                            <tr><td>是否蛋白矫正</td><td>{{ model.female_hair_protein or '无' }}</td></tr>
+                            <tr><td>是否自己染发</td><td>{{ model.female_hair_self_dye or '无' }}</td></tr>
+                            <tr><td>身高体重</td><td>{{ model.female_height_weight or '无' }}</td></tr>
+                            <tr><td>空余时间</td><td>{{ model.female_free_time or '无' }}</td></tr>
+                            <tr><td>上次烫染时间</td><td>{{ model.female_last_perm_dye or '无' }}</td></tr>
+                        </table>
+                    </div>
+                    {% endif %}
+
+                    <!-- 男模发质信息：删除修剪位置字段 -->
+                    {% if model.gender == '男' %}
+                    <div class="mt-4">
+                        <h5 class="text-primary">男模发质信息</h5>
+                        <div class="alert alert-warning">‼️ 男模需接受剪烫染 ‼️</div>
+                        <table class="table table-sm">
+                            <tr><td>目前是否烫过</td><td>{{ model.male_hair_perm or '无' }}</td></tr>
+                            <tr><td>目前是否染过</td><td>{{ model.male_hair_dye or '无' }}</td></tr>
+                            <tr><td>是否自然卷</td><td>{{ model.male_hair_curl or '无' }}</td></tr>
+                            <tr><td>发质</td><td>{{ model.male_hair_hardness or '无' }}</td></tr>
+                            <tr><td>身高体重</td><td>{{ model.male_height_weight or '无' }}</td></tr>
+                            <tr><td>上次烫染时间</td><td>{{ model.male_last_perm_dye or '无' }}</td></tr>
+                            <tr><td>日常空余时间</td><td>{{ model.male_free_time or '无' }}</td></tr>
+                        </table>
+                    </div>
+                    {% endif %}
+
+                    <!-- 视频展示 -->
+                    {% if model.video %}
+                    <div class="mt-4">
+                        <h5>视频资料</h5>
+                        <video src="/{{ model.video }}" controls class="w-100" style="max-height:400px;"></video>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

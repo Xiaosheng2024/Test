@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>模特资料库</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+<div class="container mt-4">
+<div class="d-flex justify-content-between mb-3">
+<h2>模特资料管理</h2>
+<a href="/add" class="btn btn-primary">新增模特</a>
+</div>
+
+<!-- 完整搜索表单：包含所有发质询问表字段 + 年龄下拉筛选 -->
+<form method="GET" class="mb-4 card p-4">
+    <h5 class="mb-3">精准搜索（支持多条件组合）</h5>
+    <div class="row g-3">
+        <!-- 基础搜索 -->
+        <div class="col-md-3">
+            <label class="form-label">标签/姓名</label>
+            <input type="text" name="keyword" class="form-control" placeholder="输入标签/姓名搜索" value="{{ keyword }}">
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">性别</label>
+            <select name="gender" id="genderSelect" class="form-select" onchange="this.form.submit()">
+                <option value="">全部</option>
+                <option value="女" {% if gender == '女' %}selected{% endif %}>女</option>
+                <option value="男" {% if gender == '男' %}selected{% endif %}>男</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">年龄</label>
+            <select name="age_range" class="form-select">
+                <option value="">全部</option>
+                <option value="≤30" {% if age_range == '≤30' %}selected{% endif %}>≤30岁（包含30）</option>
+                <option value="＞30" {% if age_range == '＞30' %}selected{% endif %}>＞30岁</option>
+            </select>
+        </div>
+
+        <!-- 女模专属：发质询问表所有19项筛选（隐藏/显示跟随性别） -->
+        <div id="femaleSearch" class="col-12 {% if gender != '女' and gender != '' %}d-none{% endif %}">
+            <hr>
+            <h6 class="text-primary">女模发质筛选（全部19项）</h6>
+            <div class="row g-3">
+                <div class="col-md-2"><label>3年内烫过次数</label><input type="text" name="female_hair_perm_3y" class="form-control" placeholder="如：2" value="{{ female_hair_perm_3y }}"></div>
+                <div class="col-md-2"><label>3年内染过次数</label><input type="text" name="female_hair_dye_3y" class="form-control" placeholder="如：3" value="{{ female_hair_dye_3y }}"></div>
+                <div class="col-md-2"><label>是否挑染</label>
+                    <select name="female_hair_gradient" class="form-select">
+                        <option value="">全部</option>
+                        <option value="是" {% if female_hair_gradient == '是' %}selected{% endif %}>是</option>
+                        <option value="否" {% if female_hair_gradient == '否' %}selected{% endif %}>否</option>
+                    </select>
+                </div>
+                <div class="col-md-2"><label>染过颜色类型</label><input type="text" name="female_hair_dye_type" class="form-control" placeholder="如：黑色" value="{{ female_hair_dye_type }}"></div>
+                <div class="col-md-2"><label>是否漂过</label>
+                    <select name="female_hair_bleach" class="form-select">
+                        <option value="">全部</option>
+                        <option value="是" {% if female_hair_bleach == '是' %}selected{% endif %}>是</option>
+                        <option value="否" {% if female_hair_bleach == '否' %}selected{% endif %}>否</option>
+                    </select>
+                </div>
+                <div class="col-md-2"><label>是否拉直/柔顺</label>
+                    <select name="female_hair_straight" class="form-select">
+                        <option value="">全部</option>
+                        <option value="是" {% if female_hair_straight == '是' %}selected{% endif %}>是</option>
+                        <option value="否" {% if female_hair_straight == '否' %}selected{% endif %}>否</option>
+                    </select>
+                </div>
+
+                <div class="col-md-2"><label>接受染发</label>
+                    <select name="female_accept_dye" class="form-select">
+                        <option value="">全部</option>
+                        <option value="是" {% if female_accept_dye == '是' %}selected{% endif %}>是</option>
+                        <option value="否" {% if female_accept_dye == '否' %}selected{% endif %}>否</option>
+                    </select>
+                </div>
+                <div class="col-md-2"><label>接受烫发</label>
+                    <select name="female_accept_perm" class="form-select">
+                        <option value="">全部</option>
+                        <option value="是" {% if female_accept_perm == '是' %}selected{% endif %}>是</option>
+                        <option value="否" {% if female_accept_perm == '否' %}selected{% endif %}>否</option>
+                    </select>
+                </div>
+                <div class="col-md-2"><label>接受漂发</label>
+                    <select name="female_accept_bleach" class="form-select">
+                        <option value="">全部</option>
+                        <option value="是" {% if female_accept_bleach == '是' %}selected{% endif %}>是</option>
+                        <option value="否" {% if female_accept_bleach == '否' %}selected{% endif %}>否</option>
+                    </select>
+                </div>
+                <div class="col-md-2"><label>发质</label>
+                    <select name="female_hair_hardness" class="form-select">
+                        <option value="">全部</option>
+                        <option value="适中" {% if female_hair_hardness == '适中' %}selected{% endif %}>适中</option>
+                        <option value="细软" {% if female_hair_hardness == '细软' %}selected{% endif %}>细软</option>
+                        <option value="粗硬" {% if female_hair_hardness == '粗硬' %}selected{% endif %}>粗硬</option>
+                    </select>
+                </div>
+                <div class="col-md-2"><label>是否自然卷</label>
+                    <select name="female_hair_curl" class="form-select">
+                        <option value="">全部</option>
+                        <option value="是" {% if female_hair_curl == '是' %}selected{% endif %}>是</option>
+                        <option value="否" {% if female_hair_curl == '否' %}selected{% endif %}>否</option>
+                    </select>
+                </div>
+                <div class="col-md-2"><label>最多修剪位置</label>
+                    <select name="female_hair_cut" class="form-select">
+                        <option value="">全部</option>
+                        <option value="充胸" {% if female_hair_cut == '充胸' %}selected{% endif %}>充胸</option>
+                        <option value="锁骨" {% if female_hair_cut == '锁骨' %}selected{% endif %}>锁骨</option>
+                        <option value="下巴" {% if female_hair_cut == '下巴' %}selected{% endif %}>下巴</option>
+                    </select>
+                </div>
+
+                <div class="col-md-2"><label>常用夹板/电棒</label>
+                    <select name="female_hair_iron" class="form-select">
+                        <option value="">全部</option>
+                        <option value="是" {% if female_hair_iron == '是' %}selected{% endif %}>是</option>
+                        <option value="否" {% if female_hair_iron == '否' %}selected{% endif %}>否</option>
+                    </select>
+                </div>
+                <div class="col-md-2"><label>是否烫发根</label>
+                    <select name="female_hair_root_perm" class="form-select">
+                        <option value="">全部</option>
+                        <option value="是" {% if female_hair_root_perm == '是' %}selected{% endif %}>是</option>
+                        <option value="否" {% if female_hair_root_perm == '否' %}selected{% endif %}>否</option>
+                    </select>
+                </div>
+                <div class="col-md-2"><label>是否蛋白矫正</label>
+                    <select name="female_hair_protein" class="form-select">
+                        <option value="">全部</option>
+                        <option value="是" {% if female_hair_protein == '是' %}selected{% endif %}>是</option>
+                        <option value="否" {% if female_hair_protein == '否' %}selected{% endif %}>否</option>
+                    </select>
+                </div>
+                <div class="col-md-2"><label>是否自己染发</label>
+                    <select name="female_hair_self_dye" class="form-select">
+                        <option value="">全部</option>
+                        <option value="是" {% if female_hair_self_dye == '是' %}selected{% endif %}>是</option>
+                        <option value="否" {% if female_hair_self_dye == '否' %}selected{% endif %}>否</option>
+                    </select>
+                </div>
+                <div class="col-md-2"><label>空余时间</label><input type="text" name="female_free_time" class="form-control" placeholder="如：周末" value="{{ female_free_time }}"></div>
+                <div class="col-md-2"><label>上次烫染时间</label><input type="text" name="female_last_perm_dye" class="form-control" placeholder="如：2024-01" value="{{ female_last_perm_dye }}"></div>
+            </div>
+        </div>
+
+        <!-- 男模专属：发质询问表所有7项筛选（隐藏/显示跟随性别） -->
+        <div id="maleSearch" class="col-12 {% if gender != '男' and gender != '' %}d-none{% endif %}">
+            <hr>
+            <h6 class="text-primary">男模发质筛选（全部7项）</h6>
+            <div class="row g-3">
+                <div class="col-md-2"><label>目前是否烫过</label>
+                    <select name="male_hair_perm" class="form-select">
+                        <option value="">全部</option>
+                        <option value="是" {% if male_hair_perm == '是' %}selected{% endif %}>是</option>
+                        <option value="否" {% if male_hair_perm == '否' %}selected{% endif %}>否</option>
+                    </select>
+                </div>
+                <div class="col-md-2"><label>目前是否染过</label>
+                    <select name="male_hair_dye" class="form-select">
+                        <option value="">全部</option>
+                        <option value="是" {% if male_hair_dye == '是' %}selected{% endif %}>是</option>
+                        <option value="否" {% if male_hair_dye == '否' %}selected{% endif %}>否</option>
+                    </select>
+                </div>
+                <div class="col-md-2"><label>是否自然卷</label>
+                    <select name="male_hair_curl" class="form-select">
+                        <option value="">全部</option>
+                        <option value="是" {% if male_hair_curl == '是' %}selected{% endif %}>是</option>
+                        <option value="否" {% if male_hair_curl == '否' %}selected{% endif %}>否</option>
+                    </select>
+                </div>
+                <div class="col-md-2"><label>发质</label>
+                    <select name="male_hair_hardness" class="form-select">
+                        <option value="">全部</option>
+                        <option value="细软" {% if male_hair_hardness == '细软' %}selected{% endif %}>细软</option>
+                        <option value="粗硬" {% if male_hair_hardness == '粗硬' %}selected{% endif %}>粗硬</option>
+                    </select>
+                </div>
+                <div class="col-md-2"><label>身高体重</label><input type="text" name="male_height_weight" class="form-control" placeholder="如：175/65" value="{{ male_height_weight }}"></div>
+                <div class="col-md-2"><label>上次烫染时间</label><input type="text" name="male_last_perm_dye" class="form-control" placeholder="如：2024-02" value="{{ male_last_perm_dye }}"></div>
+                <div class="col-md-2"><label>日常空余时间</label><input type="text" name="male_free_time" class="form-control" placeholder="如：平时晚上" value="{{ male_free_time }}"></div>
+            </div>
+        </div>
+
+        <!-- 搜索/重置按钮 -->
+        <div class="col-12 mt-3">
+            <button type="submit" class="btn btn-primary">执行搜索</button>
+            <a href="/" class="btn btn-secondary ms-2">重置所有筛选</a>
+        </div>
+    </div>
+</form>
+
+<!-- 批量下载 + 模特列表（保留原有样式） -->
+<form action="/batch-download" method="post" class="mb-4">
+    <button type="submit" class="btn btn-success mb-3">下载选中模特资料</button>
+    <div class="row">
+    {% for model in models %}
+    <div class="col-md-3 mb-4">
+    <div class="card shadow-sm">
+        <!-- 勾选框 -->
+        <div class="p-2">
+            <input type="checkbox" name="model_ids" value="{{ model.id }}" class="form-check-input"> 选中
+        </div>
+    {% if model.image %}
+    <img src="/{{ model.image }}" class="card-img-top" style="height:300px;object-fit:cover;">
+    {% endif %}
+    <div class="card-body">
+        <h5>{{ model.name }}</h5>
+        <p>{{ model.gender }} | {{ model.age }}岁</p>
+        <p>{{ model.tags }}</p>
+        <a href="/detail/{{ model.id }}" class="btn btn-dark w-100">查看详情</a>
+    </div>
+    </div>
+    </div>
+    {% endfor %}
+    </div>
+</form>
+</div>
+
+<!-- 性别筛选联动：自动显示/隐藏对应搜索项 -->
+<script>
+    // 初始加载时适配性别显示
+    window.onload = function() {
+        toggleSearchArea();
+    }
+
+    // 性别选择时切换搜索区域
+    function toggleSearchArea() {
+        const gender = document.getElementById('genderSelect').value;
+        const femaleArea = document.getElementById('femaleSearch');
+        const maleArea = document.getElementById('maleSearch');
+
+        // 重置隐藏状态
+        femaleArea.classList.add('d-none');
+        maleArea.classList.add('d-none');
+
+        // 根据性别显示对应区域
+        if (gender === '女') {
+            femaleArea.classList.remove('d-none');
+        } else if (gender === '男') {
+            maleArea.classList.remove('d-none');
+        } else if (gender === '') {
+            // 选全部时显示所有
+            femaleArea.classList.remove('d-none');
+            maleArea.classList.remove('d-none');
+        }
+    }
+
+    // 绑定性别选择事件
+    document.getElementById('genderSelect').addEventListener('change', toggleSearchArea);
+</script>
+</body>
+</html>
