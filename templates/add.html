@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>新增模特</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+<div class="container mt-4">
+    <h2>新增模特</h2>
+    <form method="POST" enctype="multipart/form-data" class="mt-4">
+        <!-- 基础信息 -->
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <label class="form-label">姓名（艺名）</label>
+                <input type="text" name="name" class="form-control" required>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">性别</label>
+                <select name="gender" class="form-select" id="genderSelect" required>
+                    <option value="">请选择</option>
+                    <option value="女">女</option>
+                    <option value="男">男</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label class="form-label">年龄</label>
+                <input type="number" name="age" class="form-control">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">电话</label>
+                <input type="text" name="phone" class="form-control">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">发长</label>
+                <input type="text" name="hair_length" class="form-control">
+            </div>
+        </div>
+
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <label class="form-label">发色</label>
+                <input type="text" name="hair_color" class="form-control">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">标签（多个用逗号分隔）</label>
+                <input type="text" name="tags" class="form-control">
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">备注</label>
+            <textarea name="note" class="form-control" rows="3"></textarea>
+        </div>
+
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <label class="form-label">上传图片</label>
+                <input type="file" name="image" class="form-control" accept="image/*">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">上传视频</label>
+                <input type="file" name="video" class="form-control" accept="video/*">
+            </div>
+        </div>
+
+        <!-- 女模发质询问表（默认隐藏） -->
+        <div id="femaleHairForm" class="card p-4 mb-4 d-none">
+            <h5 class="text-primary">女模发质询问表 ‼️仅限于现在头上现有的头发（剪掉的不算）‼️</h5>
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label>1. 3年内烫过几次头发</label>
+                    <input type="text" name="female_hair_perm_3y" class="form-control">
+                </div>
+                <div class="col-md-6">
+                    <label>2. 3年内染过几次头发</label>
+                    <input type="text" name="female_hair_dye_3y" class="form-control">
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label>3. 是否有挑染</label>
+                    <select name="female_hair_gradient" class="form-select">
+                        <option value="">请选择</option>
+                        <option value="是">是</option>
+                        <option value="否">否</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label>4. 染过黑色/深棕/黑茶/蓝黑/红色哪项</label>
+                    <input type="text" name="female_hair_dye_type" class="form-control">
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <label>5. 是否漂过头发</label>
+                    <select name="female_hair_bleach" class="form-select">
+                        <option value="">请选择</option>
+                        <option value="是">是</option>
+                        <option value="否">否</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label>6. 是否拉直/柔顺/软化过</label>
+                    <select name="female_hair_straight" class="form-select">
+                        <option value="">请选择</option>
+                        <option value="是">是</option>
+                        <option value="否">否</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label>7. 是否能接受染发</label>
+                    <select name="female_accept_dye" class="form-select">
+                        <option value="">请选择</option>
+                        <option value="是">是</option>
+                        <option value="否">否</option>
+                    </select>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <label>8. 是否能接受烫发</label>
+                    <select name="female_accept_perm" class="form-select">
+                        <option value="">请选择</option>
+                        <option value="是">是</option>
+                        <option value="否">否</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label>9. 是否能接受漂发</label>
+                    <select name="female_accept_bleach" class="form-select">
+                        <option value="">请选择</option>
+                        <option value="是">是</option>
+                        <option value="否">否</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label>10. 发质（适中/细软/粗硬）</label>
+                    <select name="female_hair_hardness" class="form-select">
+                        <option value="">请选择</option>
+                        <option value="适中">适中</option>
+                        <option value="细软">细软</option>
+                        <option value="粗硬">粗硬</option>
+                    </select>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <label>11. 头发是否有自然卷</label>
+                    <select name="female_hair_curl" class="form-select">
+                        <option value="">请选择</option>
+                        <option value="是">是</option>
+                        <option value="否">否</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label>12. 最多能接受修剪的位置</label>
+                    <!-- 核心修改：改成下拉选项（充胸、锁骨、下巴） -->
+                    <select name="female_hair_cut" class="form-select">
+                        <option value="">请选择</option>
+                        <option value="充胸">充胸</option>
+                        <option value="锁骨">锁骨</option>
+                        <option value="下巴">下巴</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label>13. 是否常用夹板/电棒</label>
+                    <select name="female_hair_iron" class="form-select">
+                        <option value="">请选择</option>
+                        <option value="是">是</option>
+                        <option value="否">否</option>
+                    </select>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <label>14. 是否烫过发根</label>
+                    <select name="female_hair_root_perm" class="form-select">
+                        <option value="">请选择</option>
+                        <option value="是">是</option>
+                        <option value="否">否</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label>15. 是否做过蛋白矫正</label>
+                    <select name="female_hair_protein" class="form-select">
+                        <option value="">请选择</option>
+                        <option value="是">是</option>
+                        <option value="否">否</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label>16. 是否自己染过头发</label>
+                    <select name="female_hair_self_dye" class="form-select">
+                        <option value="">请选择</option>
+                        <option value="是">是</option>
+                        <option value="否">否</option>
+                    </select>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <label>17. 身高体重</label>
+                    <input type="text" name="female_height_weight" class="form-control">
+                </div>
+                <div class="col-md-4">
+                    <label>18. 周末有空还是平时有空</label>
+                    <input type="text" name="female_free_time" class="form-control">
+                </div>
+                <div class="col-md-4">
+                    <label>19. 上次烫染时间</label>
+                    <input type="text" name="female_last_perm_dye" class="form-control">
+                </div>
+            </div>
+        </div>
+
+        <!-- 男模发质询问表（默认隐藏）：删除「最多能接受修剪的位置」字段 -->
+        <div id="maleHairForm" class="card p-4 mb-4 d-none">
+            <h5 class="text-primary">男模发质询问表 ‼️仅限于现在头上现有的头发（剪掉的不算）‼️</h5>
+            <div class="alert alert-warning">‼️ 注意：男模需要接受剪烫染 ‼️</div>
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label>1. 目前头发是否有烫过</label>
+                    <select name="male_hair_perm" class="form-select">
+                        <option value="">请选择</option>
+                        <option value="是">是</option>
+                        <option value="否">否</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label>2. 目前头发是否有染色</label>
+                    <select name="male_hair_dye" class="form-select">
+                        <option value="">请选择</option>
+                        <option value="是">是</option>
+                        <option value="否">否</option>
+                    </select>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <label>3. 头发是否有自然卷</label>
+                    <select name="male_hair_curl" class="form-select">
+                        <option value="">请选择</option>
+                        <option value="是">是</option>
+                        <option value="否">否</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label>4. 发质（细软/粗硬）</label>
+                    <select name="male_hair_hardness" class="form-select">
+                        <option value="">请选择</option>
+                        <option value="细软">细软</option>
+                        <option value="粗硬">粗硬</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label>5. 身高体重</label>
+                    <input type="text" name="male_height_weight" class="form-control">
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <label>6. 上次烫染时间</label>
+                    <input type="text" name="male_last_perm_dye" class="form-control">
+                </div>
+                <div class="col-md-4">
+                    <label>7. 日常空余时间</label>
+                    <input type="text" name="male_free_time" class="form-control">
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary">保存</button>
+        <a href="/" class="btn btn-secondary ms-2">返回</a>
+    </form>
+</div>
+
+<!-- 动态显示男女表单 -->
+<script>
+    const genderSelect = document.getElementById('genderSelect');
+    const femaleForm = document.getElementById('femaleHairForm');
+    const maleForm = document.getElementById('maleHairForm');
+
+    genderSelect.addEventListener('change', function() {
+        // 先隐藏所有
+        femaleForm.classList.add('d-none');
+        maleForm.classList.add('d-none');
+        
+        // 根据选择显示对应表单
+        if (this.value === '女') {
+            femaleForm.classList.remove('d-none');
+        } else if (this.value === '男') {
+            maleForm.classList.remove('d-none');
+        }
+    });
+</script>
+</body>
+</html>

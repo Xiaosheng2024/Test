@@ -1,0 +1,12 @@
+version: '3'
+
+services:
+  model-system:
+    build: .
+    container_name: model-system
+    ports:
+      - "5001:5000"
+    volumes:
+      - ./uploads:/app/uploads
+      - ./models.db:/app/models.db
+    restart: always
