@@ -168,11 +168,22 @@ class A5PdfGeneratorTest(unittest.TestCase):
             generator.generate(_label(), temp_dir / "sample.pdf")
         self.assertEqual(before, _sha256(TEMPLATE))
 
-    def test_reject_empty_required_field(self) -> None:
+    def test_allows_empty_batch_before_mii_returns_hu(self) -> None:
+        label = OfflineOrderLabel(
+            offline_order_no="",
+            material_code="5664620-CLBK06",
+            material_name="主驾座椅背板总成 极夜黑",
+            customer_material_code="566462001FA2",
+            quantity=6,
+            production_time=datetime(2026, 6, 29, 18, 55),
+        )
+        self.assertEqual("", label.offline_order_no)
+
+    def test_reject_empty_required_material_field(self) -> None:
         with self.assertRaises(ValueError):
             OfflineOrderLabel(
                 offline_order_no="",
-                material_code="5664620-CLBK06",
+                material_code="",
                 material_name="主驾座椅背板总成 极夜黑",
                 customer_material_code="566462001FA2",
                 quantity=6,

@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from ehx_guard.config import load_config
+from ehx_guard.config import load_config, update_config
 from ehx_guard.printing import ExcelComPrinter
 
 
@@ -22,6 +22,38 @@ class ConfigAndPrintingTest(unittest.TestCase):
         self.assertEqual("reportlab", config.mac_pdf_renderer)
         self.assertEqual("excel_com", config.windows_pdf_renderer)
         self.assertEqual("excel_com", config.windows_print_method)
+        self.assertEqual("serial", config.scanner_mode)
+        self.assertEqual("", config.serial_port)
+        self.assertEqual(9600, config.serial_baudrate)
+        self.assertTrue(config.hid_force_english)
+        self.assertTrue(config.hid_capture_without_input_focus)
+        self.assertEqual(
+            "SC_AUTOMATION/API/PRODUCTION/V1/TRANSACTION/PRODUCTION_API",
+            config.mii_transaction,
+        )
+        self.assertEqual("ResultXML", config.mii_output_parameter)
+        self.assertEqual("P", config.mii_produce_reverse)
+        self.assertEqual("text/xml", config.mii_content_type)
+
+    def test_device_settings_update_preserves_other_config(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir_text:
+            config_path = Path(temp_dir_text) / "config.json"
+            config_path.write_text(
+                '{"mii_token":"keep-me","printer_name":""}',
+                encoding="utf-8",
+            )
+            updated = update_config(
+                config_path,
+                printer_name="Line Printer",
+                scanner_mode="serial",
+                serial_port="COM7",
+                serial_baudrate=115200,
+            )
+            self.assertEqual("Line Printer", updated.printer_name)
+            self.assertEqual("serial", updated.scanner_mode)
+            self.assertEqual("COM7", updated.serial_port)
+            self.assertEqual(115200, updated.serial_baudrate)
+            self.assertEqual("keep-me", updated.mii_token)
 
     def test_non_windows_print_failure_preserves_pdf(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir_text:

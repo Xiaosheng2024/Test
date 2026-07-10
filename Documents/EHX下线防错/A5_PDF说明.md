@@ -12,7 +12,7 @@ Windows 使用 Microsoft Excel COM 导出 PDF；macOS 仅使用 ReportLab fallba
 | 供应商物料号 | `A9` |
 | 客户物料号 | `F3` |
 | 数量 | `F8` |
-| Batch / 下线单号 | `F10` |
+| Batch / 下线单号 | `F10`，MII成功后填入 `S + HUCode后9位` |
 
 ## 模板字段
 

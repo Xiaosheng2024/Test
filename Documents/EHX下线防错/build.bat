@@ -18,6 +18,7 @@ py -3 -m PyInstaller --noconfirm --clean --onefile --windowed ^
   --workpath "build\pyinstaller" ^
   --specpath "build" ^
   --collect-submodules "reportlab.graphics.barcode" ^
+  --collect-submodules "serial" ^
   main.py
 if errorlevel 1 goto :error
 

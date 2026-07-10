@@ -88,11 +88,19 @@ class DatabaseMigrationTest(unittest.TestCase):
             self.assertEqual(44, materials[0]["box_scan_count"])
             self.assertEqual(10, order["required_count"])
             self.assertEqual(10, order["qty"])
+            self.assertEqual("", order["mii_hu_code"])
+            self.assertEqual(0, order["mii_attempt_count"])
             with database.connect() as connection:
                 scan_columns = {
                     row["name"]
                     for row in connection.execute(
                         "PRAGMA table_info(scan_records)"
+                    ).fetchall()
+                }
+                order_columns = {
+                    row["name"]
+                    for row in connection.execute(
+                        "PRAGMA table_info(offline_orders)"
                     ).fetchall()
                 }
                 index_sql = connection.execute(
@@ -105,7 +113,33 @@ class DatabaseMigrationTest(unittest.TestCase):
             self.assertTrue(
                 {"is_voided", "void_reason", "voided_at"} <= scan_columns
             )
+            self.assertTrue(
+                {
+                    "mii_status",
+                    "mii_hu_code",
+                    "mii_s_code",
+                    "mii_error",
+                    "mii_attempt_count",
+                    "mii_last_attempt_at",
+                    "mii_response",
+                }
+                <= order_columns
+            )
             self.assertIn("is_voided = 0", index_sql)
+
+            database.mark_mii_result(
+                "ORDER-1",
+                success=True,
+                status="PRODUCED",
+                hu_code="1368123456965",
+                s_code="123456965",
+            )
+            migrated_again = Database(path, default_box_scan_count=44)
+            migrated_order = migrated_again.get_order("ORDER-1")
+            self.assertEqual("S123456965", migrated_order["mii_s_code"])
+            self.assertEqual(
+                1, len(migrated_again.history_by_hu("1368123456965"))
+            )
 
 
 if __name__ == "__main__":

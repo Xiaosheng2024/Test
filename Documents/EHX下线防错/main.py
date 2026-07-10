@@ -65,7 +65,7 @@ def main() -> int:
     application.setApplicationName("EHX下线防错")
     try:
         service = build_service(APP_ROOT / "config.json")
-        window = MainWindow(service)
+        window = MainWindow(service, APP_ROOT / "config.json")
         window.showFullScreen()
         return application.exec()
     except Exception as exc:

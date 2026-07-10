@@ -52,7 +52,6 @@ class OfflineOrderLabel:
 
     def __post_init__(self) -> None:
         required = {
-            "offline_order_no": self.offline_order_no,
             "material_code": self.material_code,
             "material_name": self.material_name,
             "customer_material_code": self.customer_material_code,

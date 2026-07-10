@@ -13,7 +13,12 @@ from PySide6.QtTest import QTest
 
 from ehx_guard.config import RuntimeConfig
 from ehx_guard.database import Database
-from ehx_guard.gui import HistoryDialog, MainWindow, MaterialDialog
+from ehx_guard.gui import (
+    HistoryDialog,
+    MainWindow,
+    MaterialDialog,
+    SettingsDialog,
+)
 from ehx_guard.materials import Material, MaterialRepository
 from ehx_guard.printing import PrintResult
 from ehx_guard.scanner_service import ScannerService
@@ -74,6 +79,7 @@ class GuiSmokeTest(unittest.TestCase):
                 ]
             )
             config = RuntimeConfig(
+                scanner_mode="hid",
                 box_scan_count=6,
                 database_path=str(temp_dir / "gui.db"),
                 output_pdf_dir=str(temp_dir / "pdf"),
@@ -102,6 +108,8 @@ class GuiSmokeTest(unittest.TestCase):
                 window.progress_row.indexOf(window.progress_big_label), 0
             )
             self.assertEqual("重置当前箱", window.reset_button.text())
+            self.assertEqual("设置", window.settings_button.text())
+            self.assertFalse(hasattr(window, "order_value"))
 
             window.scan_input.setText("5664620-CLBK0620260616001")
             window.scan_input.returnPressed.emit()
@@ -120,6 +128,25 @@ class GuiSmokeTest(unittest.TestCase):
             )
             self.assertEqual("6", material_dialog.table.item(0, 3).text())
             material_dialog.close()
+
+            settings_dialog = SettingsDialog(config, window)
+            settings_dialog.mii_enabled_check.setChecked(True)
+            settings_dialog.mii_base_url_edit.setText(
+                "https://mii.example:50001/XMII/Runner"
+            )
+            settings_dialog.mii_login_edit.setText("zhangto")
+            settings_dialog.mii_password_edit.setText("fau")
+            settings_dialog.mii_plant_edit.setText("1680")
+            settings_dialog.mii_user_edit.setText("zhangto")
+            settings_dialog.mii_workcenter_edit.setText("WC00311")
+            settings_dialog.mii_packaging_edit.setText("GENERIC_PACN")
+            mii_values = settings_dialog.values()
+            self.assertTrue(mii_values["mii_enabled"])
+            self.assertEqual("zhangto", mii_values["mii_login_name"])
+            self.assertEqual("fau", mii_values["mii_login_password"])
+            self.assertEqual("1680", mii_values["mii_plant"])
+            self.assertEqual("WC00311", mii_values["mii_workcenter"])
+            settings_dialog.close()
 
             # 重复、混料、未配置均弹窗，且失败扫码不增加进度。
             window.scan_input.setText("5664620-CLBK0620260616001")
@@ -174,6 +201,7 @@ class GuiSmokeTest(unittest.TestCase):
                 ]
             )
             config = RuntimeConfig(
+                scanner_mode="hid",
                 box_scan_count=44,
                 database_path=str(temp_dir / "reset.db"),
                 output_pdf_dir=str(temp_dir / "pdf"),
@@ -220,12 +248,12 @@ class GuiSmokeTest(unittest.TestCase):
             history = HistoryDialog(service, window)
             rows = database.history_by_order(old_order_no)
             history._populate(rows)
-            self.assertEqual(12, history.table.columnCount())
+            self.assertEqual(14, history.table.columnCount())
             self.assertEqual(
-                "已作废/重置", history.table.item(0, 8).text()
+                "已作废/重置", history.table.item(0, 10).text()
             )
-            self.assertEqual("manual reset", history.table.item(0, 9).text())
-            self.assertTrue(history.table.item(0, 10).text())
+            self.assertEqual("manual reset", history.table.item(0, 11).text())
+            self.assertTrue(history.table.item(0, 12).text())
             history.close()
 
             # 作废条码可重扫；正常进度继续实时更新。
@@ -254,6 +282,7 @@ class GuiSmokeTest(unittest.TestCase):
                 ]
             )
             config = RuntimeConfig(
+                scanner_mode="hid",
                 box_scan_count=44,
                 database_path=str(temp_dir / "full.db"),
                 output_pdf_dir=str(temp_dir / "pdf"),

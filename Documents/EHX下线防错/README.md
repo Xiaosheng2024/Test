@@ -41,6 +41,11 @@ Windows 正式环境只要求已安装 Microsoft Excel、Python 依赖和打印�
 ```json
 {
   "printer_name": "",
+  "scanner_mode": "serial",
+  "serial_port": "",
+  "serial_baudrate": 9600,
+  "hid_force_english": true,
+  "hid_capture_without_input_focus": true,
   "template_path": "报交下线单模板.xlsx",
   "output_pdf_dir": "output/pdf",
   "database_path": "data/ehx_guard.db",
@@ -50,8 +55,26 @@ Windows 正式环境只要求已安装 Microsoft Excel、Python 依赖和打印�
   "station_name": "下线工位",
   "material_excel_path": "EHX物料号匹配.xlsx",
   "mii_enabled": false,
-  "mii_base_url": "",
+  "mii_base_url": "https://wwvcamii0071.dc.ege.ds:50001/XMII/",
   "mii_token": "",
+  "mii_transaction": "SC_AUTOMATION/API/PRODUCTION/V1/TRANSACTION/PRODUCTION_API",
+  "mii_output_parameter": "ResultXML",
+  "mii_login_name": "",
+  "mii_login_password": "",
+  "mii_plant": "",
+  "mii_user_id": "",
+  "mii_customer_code": "",
+  "mii_production_version": "0001",
+  "mii_production_shift": "",
+  "mii_workcenter": "",
+  "mii_packaging_material": "",
+  "mii_information_mode": "offline_order_no",
+  "mii_information": "",
+  "mii_produce_reverse": "P",
+  "mii_content_type": "text/xml",
+  "mii_timeout_seconds": 10,
+  "mii_min_retry_interval_seconds": 60,
+  "mii_max_retry_count": 3,
   "barcode_mode": "image",
   "barcode_show_text": true,
   "barcode_output_dir": "output/barcodes",
@@ -69,6 +92,7 @@ Windows 正式环境只要求已安装 Microsoft Excel、Python 依赖和打印�
 变更公司代码时，只需修改 `config.json`。
 
 `printer_name` 为空时使用 Windows 默认打印机。
+也可在主界面右上角点击“设置”，选择打印机后立即生效。
 
 指定打印机时，必须填写 Windows 打印机列表中的完整名称，例如：
 
@@ -145,8 +169,25 @@ D 列为空时使用 `config.json` 的 `box_scan_count`。D 列非数字、非�
 “物料查看 / 重新导入”，导入完成后会显示新增、更新和禁用数量；也可以重启程序
 使修改生效。
 
-`mii_enabled` 默认必须为 `false`。当前 `mii_client.py` 只记录日志，不发送任何
-网络请求；取得客户接口后仅需在该文件中补充请求和鉴权。
+`mii_enabled` 默认必须为 `false`，不会主动请求 MII。启用后，程序在满箱后按
+MII API 报产一次：Excel C 列 `客户物料号/SAP物料号` 作为 `PartNumber`，当前箱
+`required_count` 作为 `Quantity`，`Information` 默认填本地下线单号。MII 返回
+`Status=PRODUCED` 且包含至少 9 位的 `HUCode` 时视为成功。程序保存完整
+`HUCode`，生成 `S + HUCode后9位` 的 S 码，打印到“批次号 / 下线单号”位置及其条码。
+
+主界面不再显示本地内部追溯单号。可在“历史查询 / 补打”中输入完整 HU、
+`S+后9位` 或裸后9位，查出该箱全部扫码记录。
+
+右上角“设置”的“MII接口”页可现场保存地址、账号、密码、Plant、
+UserId、CustomerCode、Workcenter、生产版本、班次、包装材料和 Information。
+`PartNumber` 自动取 Excel C 列，`Quantity` 自动取当前箱数量，
+`ProductionDate` 自动取当前时间，请求中 `HUCode` 留空。
+设置窗口默认显示“设备”页，MII 默认关闭；只有手动打开“MII接口”页并勾选
+“启用整箱 MII 报产”保存后，满箱才会请求 MII。
+
+MII 失败时不会自动连续回拨，也不会打印；当前箱保留为 `MII_FAILED`，日志记录错误，
+界面提示失败原因。人工重试受 `mii_min_retry_interval_seconds` 和
+`mii_max_retry_count` 限制，避免冲击 MII 服务器。
 
 ## 启动扫码程序
 
@@ -154,16 +195,27 @@ D 列为空时使用 `config.json` 的 `box_scan_count`。D 列非数字、非�
 python main.py
 ```
 
-程序启动后自动全屏。扫码枪按键盘输入方式工作，条码后的回车会立即触发校验。
+程序启动后自动全屏。右上角“设置”可选择串口或 HID 扫码枪，现场默认为串口模式：
+
+- HID 模式下，扫码枪回车立即触发校验；即使光标不在扫码输入框，只要当前仍在本程序界面内就可接收。Windows 启动和窗口重新激活时会切换英文键盘布局，扫码字符按键码解析，不依赖中文输入法文本。
+- 串口模式下，选择 `COM` 端口和波特率。新大陆 NLS-OY20-RF 默认按
+  `9600/8/N/1/无流控` 连接。程序支持 CR、LF、CRLF，支持串口拆包和粘包，
+  回车、换行和首尾空格不会存入条码。
+
+现有配置字段为 `scanner_mode=hid|serial`、`serial_port=COM3` 和
+`serial_baudrate=9600`。为避免出现两套相同配置，不另外增加 `scan_mode` 和 `baudrate`。
+如程序提示串口不存在/打开失败，先在 Windows 设备管理器确认 COM 口；
+没有 COM 口时检查 NLS-OY20-RF 的 USB 虚拟串口/转串口驱动。
+
+HID 的“无光标接收”范围是本程序窗口。如现场要求切换到其他软件后仍在后台接收，需要另行配置 Windows Raw Input 和扫码枪设备标识，避免把普通键盘误当扫码枪。
 `Esc` 或 `Ctrl+Q` 退出程序。
 
 主界面显示：
 
 - 当前物料号和物料名称
 - 每箱需扫、已扫和剩余数量
-- 当前下线单号
 - 最近扫码和错误原因
-- 历史查询、补打和失败重试入口
+- 按条码、HU/S码、内部追溯单号或日期查询，以及补打和失败重试入口
 - 物料查看、每箱数量和重新导入入口
 
 成功扫码记录使用 SQLite 部分唯一索引约束完整条码，失败尝试仍会保存，因此重复、
@@ -188,10 +240,8 @@ Excel A列：5664620FA2#01
 重复判断使用完整扫码条码；同箱混料判断使用 Excel A 列前缀匹配出的物料码。日期
 和流水号后缀不参与物料配置。
 
-> 当前代码的物料识别已经支持上述 `startswith` 前缀匹配，但条码格式校验仍限定
-> 为旧格式“8位日期 + 3位流水号”。本次按要求未修改程序逻辑，因此正式启用带
-> `#` 和4位流水号的新格式前，仍需单独确认是否允许调整格式校验，否则扫码会被
-> 判定为“格式错误”。
+程序同时兼容旧格式 `Excel A列前缀 + yyyyMMdd + 3位流水号`。重复判断始终使用
+完整扫码条码。
 
 公司代码 `2918` 只填入 `$Reserved1Sub$`，与物料前缀和完整扫码条码无关。
 
@@ -247,7 +297,7 @@ python generate_a5_pdf.py order.json output\pdf\EHX20260629185500.pdf
 1. 确认 Microsoft Excel 可以正常启动并打开模板。
 2. 安装 Python 依赖，其中 Windows 必须安装 `pywin32`。
 3. 安装打印机驱动并打印 Windows 测试页。
-4. 修改 `config.json`，填写打印机名称。
+4. 修改 `config.json` 或在程序右上角“设置”中选择打印机、HID/串口模式、COM 端口和波特率。
 5. 运行 `python scripts\check_runtime.py`，确认 Excel COM、pywin32、模板、
    PDF/条码输出目录、SQLite 和打印机检查通过。
 6. 启动 EHX 下线防错程序。

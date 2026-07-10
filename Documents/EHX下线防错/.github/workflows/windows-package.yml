@@ -47,6 +47,7 @@ jobs:
             --workpath "build/pyinstaller" `
             --specpath "build" `
             --collect-submodules "reportlab.graphics.barcode" `
+            --collect-submodules "serial" `
             main.py 2>&1 |
             Tee-Object -FilePath "build/logs/pyinstaller.log"
           if ($LASTEXITCODE -ne 0) {

@@ -175,10 +175,18 @@ class MaterialRepository:
         barcode: str, material: Material
     ) -> tuple[bool, str]:
         suffix = barcode[len(material.material_code) :]
-        if not re.fullmatch(r"\d{11}", suffix):
-            return False, "条码后缀必须为8位日期加3位流水号"
-        try:
-            datetime.strptime(suffix[:8], "%Y%m%d")
-        except ValueError:
-            return False, "条码日期格式错误"
-        return True, ""
+        new_format = re.fullmatch(r"#(\d{8})#(\d{4})", suffix)
+        if new_format:
+            try:
+                datetime.strptime(new_format.group(1), "%Y%m%d")
+            except ValueError:
+                return False, "条码日期格式错误"
+            return True, ""
+        old_format = re.fullmatch(r"(\d{8})(\d{3})", suffix)
+        if old_format:
+            try:
+                datetime.strptime(old_format.group(1), "%Y%m%d")
+            except ValueError:
+                return False, "条码日期格式错误"
+            return True, ""
+        return False, "条码后缀必须为#8位日期#4位流水号"
