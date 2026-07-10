@@ -1,6 +1,6 @@
 {
   "printer_name": "",
-  "scanner_mode": "hid",
+  "scanner_mode": "serial",
   "serial_port": "",
   "serial_baudrate": 9600,
   "hid_force_english": true,

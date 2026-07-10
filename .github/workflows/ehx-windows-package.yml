@@ -1,10 +1,17 @@
-name: Windows Package
+name: EHX Windows Package
 
 on:
   workflow_dispatch:
   push:
     branches:
       - main
+    paths:
+      - "Documents/EHX下线防错/**"
+      - ".github/workflows/ehx-windows-package.yml"
+
+defaults:
+  run:
+    working-directory: Documents/EHX下线防错
 
 jobs:
   package:
@@ -19,6 +26,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: Documents/EHX下线防错/requirements.txt
 
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
@@ -83,7 +91,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: EHX下线防错_Windows
-          path: dist/EHX下线防错_Windows.zip
+          path: Documents/EHX下线防错/dist/EHX下线防错_Windows.zip
           if-no-files-found: error
 
       - name: Upload Windows diagnostic logs
@@ -91,5 +99,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: EHX下线防错_Windows_构建日志
-          path: build/logs/
+          path: Documents/EHX下线防错/build/logs/
           if-no-files-found: warn
