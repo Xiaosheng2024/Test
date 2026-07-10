@@ -29,6 +29,19 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _close_pdf_logger(log_path: Path) -> None:
+    """释放 RotatingFileHandler 持有的文件句柄。
+
+    Windows 上打开的日志文件不关闭就无法删除临时目录，
+    macOS/Linux 不受影响，所以本地跑测试看不出这个问题。
+    """
+
+    logger = logging.getLogger(f"ehx_guard.pdf.{log_path}")
+    for handler in list(logger.handlers):
+        handler.close()
+        logger.removeHandler(handler)
+
+
 def _label() -> OfflineOrderLabel:
     return OfflineOrderLabel(
         offline_order_no="EHX20260629185500",
@@ -53,36 +66,39 @@ class A5PdfGeneratorTest(unittest.TestCase):
                 enable_excel_com=False,
                 barcode_output_dir=temp_dir / "barcodes",
             )
-            generator.create_workbook_copy(_label(), copy_path)
-
-            workbook = load_workbook(copy_path)
             try:
-                sheet = workbook["标签"]
-                text = "\n".join(
-                    str(cell.value)
-                    for row in sheet.iter_rows()
-                    for cell in row
-                    if cell.value is not None
-                )
-                self.assertNotRegex(text, r"\$[A-Za-z0-9_]+\$")
-                self.assertIn("5664620-CLBK06", text)
-                self.assertIn("2918", text)
-                self.assertNotIn("$Reserved1Sub$", text)
-                self.assertIn("EHX20260629185500", text)
-                self.assertEqual("'标签'!$A$1:$F$12", sheet.print_area)
-                self.assertEqual("landscape", sheet.page_setup.orientation)
-                self.assertEqual(18, len(sheet.merged_cells.ranges))
-                self.assertEqual(0, sheet.page_margins.left)
-                self.assertIsNone(sheet["A9"].value)
-                self.assertIsNone(sheet["F3"].value)
-                self.assertIsNone(sheet["F8"].value)
-                self.assertIsNone(sheet["F10"].value)
-                self.assertEqual(5, len(sheet._images))
-                self.assertEqual(
-                    4, len(list((temp_dir / "barcodes").glob("*.png")))
-                )
+                generator.create_workbook_copy(_label(), copy_path)
+
+                workbook = load_workbook(copy_path)
+                try:
+                    sheet = workbook["标签"]
+                    text = "\n".join(
+                        str(cell.value)
+                        for row in sheet.iter_rows()
+                        for cell in row
+                        if cell.value is not None
+                    )
+                    self.assertNotRegex(text, r"\$[A-Za-z0-9_]+\$")
+                    self.assertIn("5664620-CLBK06", text)
+                    self.assertIn("2918", text)
+                    self.assertNotIn("$Reserved1Sub$", text)
+                    self.assertIn("EHX20260629185500", text)
+                    self.assertEqual("'标签'!$A$1:$F$12", sheet.print_area)
+                    self.assertEqual("landscape", sheet.page_setup.orientation)
+                    self.assertEqual(18, len(sheet.merged_cells.ranges))
+                    self.assertEqual(0, sheet.page_margins.left)
+                    self.assertIsNone(sheet["A9"].value)
+                    self.assertIsNone(sheet["F3"].value)
+                    self.assertIsNone(sheet["F8"].value)
+                    self.assertIsNone(sheet["F10"].value)
+                    self.assertEqual(5, len(sheet._images))
+                    self.assertEqual(
+                        4, len(list((temp_dir / "barcodes").glob("*.png")))
+                    )
+                finally:
+                    workbook.close()
             finally:
-                workbook.close()
+                _close_pdf_logger(temp_dir / "pdf.log")
 
     def test_company_code_does_not_change_material_barcode(self) -> None:
         label = _label()
@@ -107,10 +123,15 @@ class A5PdfGeneratorTest(unittest.TestCase):
                 enable_excel_com=False,
                 barcode_output_dir=temp_dir / "barcodes",
             )
-            with self.assertRaisesRegex(
-                PdfGenerationError, "模板存在未赋值占位符"
-            ):
-                generator.create_workbook_copy(_label(), temp_dir / "copy.xlsx")
+            try:
+                with self.assertRaisesRegex(
+                    PdfGenerationError, "模板存在未赋值占位符"
+                ):
+                    generator.create_workbook_copy(
+                        _label(), temp_dir / "copy.xlsx"
+                    )
+            finally:
+                _close_pdf_logger(temp_dir / "pdf.log")
 
     def test_unavailable_preferred_renderer_uses_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir_text:
@@ -124,14 +145,17 @@ class A5PdfGeneratorTest(unittest.TestCase):
                 enable_excel_com=False,
                 barcode_output_dir=temp_dir / "barcodes",
             )
-            result = generator.generate(_label(), output)
-            for handler in generator.logger.handlers:
-                handler.flush()
+            try:
+                result = generator.generate(_label(), output)
+                for handler in generator.logger.handlers:
+                    handler.flush()
 
-            self.assertTrue(result.is_file())
-            self.assertEqual("reportlab_fallback", generator.last_renderer)
-            log_text = log_path.read_text(encoding="utf-8")
-            self.assertIn("fallback PDF renderer", log_text)
+                self.assertTrue(result.is_file())
+                self.assertEqual("reportlab_fallback", generator.last_renderer)
+                log_text = log_path.read_text(encoding="utf-8")
+                self.assertIn("fallback PDF renderer", log_text)
+            finally:
+                _close_pdf_logger(log_path)
 
     def test_fallback_generates_single_page_a5_landscape(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir_text:
@@ -144,15 +168,20 @@ class A5PdfGeneratorTest(unittest.TestCase):
                 enable_excel_com=False,
                 barcode_output_dir=temp_dir / "barcodes",
             )
-            result = generator.generate(_label(), output)
+            try:
+                result = generator.generate(_label(), output)
 
-            reader = PdfReader(str(result))
-            self.assertEqual(1, len(reader.pages))
-            page = reader.pages[0]
-            self.assertGreater(float(page.mediabox.width), float(page.mediabox.height))
-            self.assertGreaterEqual(len(page.images), 4)
-            self.assertTrue(output.with_suffix(".xlsx").is_file())
-            self.assertEqual("reportlab_fallback", generator.last_renderer)
+                reader = PdfReader(str(result))
+                self.assertEqual(1, len(reader.pages))
+                page = reader.pages[0]
+                self.assertGreater(
+                    float(page.mediabox.width), float(page.mediabox.height)
+                )
+                self.assertGreaterEqual(len(page.images), 4)
+                self.assertTrue(output.with_suffix(".xlsx").is_file())
+                self.assertEqual("reportlab_fallback", generator.last_renderer)
+            finally:
+                _close_pdf_logger(temp_dir / "pdf.log")
 
     def test_generation_does_not_modify_original_template(self) -> None:
         before = _sha256(TEMPLATE)
@@ -165,7 +194,10 @@ class A5PdfGeneratorTest(unittest.TestCase):
                 enable_excel_com=False,
                 barcode_output_dir=temp_dir / "barcodes",
             )
-            generator.generate(_label(), temp_dir / "sample.pdf")
+            try:
+                generator.generate(_label(), temp_dir / "sample.pdf")
+            finally:
+                _close_pdf_logger(temp_dir / "pdf.log")
         self.assertEqual(before, _sha256(TEMPLATE))
 
     def test_allows_empty_batch_before_mii_returns_hu(self) -> None:
