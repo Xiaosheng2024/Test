@@ -1,0 +1,50 @@
+程序在本地，让codex去读取还是这么说你看着说
+EHX下线防错程序
+
+下线单内容.png 下线单A5纸有内容的样式
+
+EHX物料号匹配.xlsx 中C3-C8 物料条码
+
+5664618-CLBK06	副驾座椅背板总成 极夜黑	566461801FA2
+5664618-CLBN62	副驾座椅背板总成 暖沙棕	566461801WS0
+5664618-CLRD16	副驾座椅背板总成 云雾紫	566461801MP3
+5664620-CLBK06	主驾座椅背板总成 极夜黑	566462001FA2
+5664620-CLBN62	主驾座椅背板总成 暖沙棕	566462001WS0
+
+Wologic 之前别人写过的windows程序，没有源码 可以借鉴，里面有报交下线单模板.xlsx 和一些使用的方法可以借鉴。
+
+
+逻辑是扫码枪扫码条码如 需要扫码的箱子数可以自配置。ui界面上提示 需要扫码数量要特别大的字体，程序自动全屏，每次扫码都需要记录下线单单号和绑定的设置个数的条码内容，并确保他们不唯一，且都是5664620-CLBK062直到满箱开始打印A5模版，表格是引入参数生成pdf给指定打印机进行打印，不需要手动点击。 支持历史记录查询，输入一个条码查询它扫码日期和时间点
+5664620-CLBK0620260616001
+5664620-CLBK0620260616002
+5664620-CLBK0620260616003
+5664620-CLBK0620260616004
+5664620-CLBK0620260616005
+5664620-CLBK0620260616006
+
+
+其中MII对接上传，暂时不需要做，后续有接口了需要支持
+
+给code x下任务
+
+
+SEBANGO
+
+
+cat > test_data.json <<'EOF'
+{
+  "supplier_name": "测试供应商",
+  "material_name": "主驾座椅背板总成 极夜黑",
+  "customer_name": "SEBANGO",
+  "customer_material_code": "566462001FA2",
+  "material_code": "5664620-CLBK06",
+  "material_short_code": "",
+  "quantity": 6,
+  "offline_location": "EHX下线",
+  "offline_order_no": "EHX202606290001",
+  "production_time": "2026-06-29T19:30:00"
+}
+EOF
+
+mkdir -p output/pdf
+python generate_a5_pdf.py test_data.json output/pdf/test_a51.pdf
