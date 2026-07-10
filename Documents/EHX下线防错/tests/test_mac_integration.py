@@ -76,7 +76,7 @@ class MacIntegrationTest(unittest.TestCase):
             self.assertIn("5664620-CLBK06", text)
             self.assertIn("566462001FA2", text)
             self.assertIn("2918", text)
-            self.assertIn(order_no, text)
+            self.assertRegex(text, r"S\d{9}")
             self.assertEqual(
                 4, len(list((root / "output/barcodes").glob("*.png")))
             )

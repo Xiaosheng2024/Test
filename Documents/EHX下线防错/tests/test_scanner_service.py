@@ -4,10 +4,17 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlsplit
 
 from ehx_guard.config import RuntimeConfig
 from ehx_guard.database import Database
 from ehx_guard.materials import Material, MaterialRepository
+from ehx_guard.mii_client import (
+    MiiClient,
+    MiiUploadResult,
+    _parse_response,
+    build_s_code,
+)
 from ehx_guard.printing import PrintResult
 from ehx_guard.scanner_service import ScannerService
 
@@ -23,6 +30,11 @@ BARCODE_A2 = "5664620-CLBK0620260616002"
 BARCODE_A3 = "5664620-CLBK0620260616003"
 BARCODE_B1 = "5664618-CLBK0620260616001"
 BARCODE_B2 = "5664618-CLBK0620260616002"
+MATERIAL_NEW = Material(
+    "5664620FA2#01", "主驾座椅背板总成 极夜黑", "566462001FA2", 2
+)
+BARCODE_NEW1 = "5664620FA2#01#20260710#0060"
+BARCODE_NEW2 = "5664620FA2#01#20260710#0061"
 
 
 class FakePdfGenerator:
@@ -57,12 +69,19 @@ class FakePrinter:
 
 
 class FakeMii:
-    def __init__(self) -> None:
+    def __init__(self, result=None) -> None:
         self.calls = []
+        self.result = result or MiiUploadResult(
+            True,
+            status="PRODUCED",
+            hu_code="1368123456965",
+            s_code="123456965",
+            message="PRODUCED",
+        )
 
     def upload_offline_order(self, data):
         self.calls.append(data)
-        return False
+        return self.result
 
 
 class ScannerServiceTest(unittest.TestCase):
@@ -159,11 +178,9 @@ class ScannerServiceTest(unittest.TestCase):
         self.assertEqual(1, len(pdf.labels))
         self.assertEqual("2918", pdf.labels[0].reserved1_sub)
         self.assertEqual("5664620-CLBK06", pdf.labels[0].material_code)
+        self.assertRegex(pdf.labels[0].offline_order_no, r"^S\d{9}$")
         self.assertEqual(1, len(printer.paths))
-        self.assertEqual(1, len(mii.calls))
-        self.assertEqual(
-            [BARCODE_A1, BARCODE_A2], mii.calls[0]["barcodes"]
-        )
+        self.assertEqual(0, len(mii.calls))
 
         history = self.database.history_by_order(first_order)
         self.assertEqual(5, len(history))
@@ -358,7 +375,132 @@ class ScannerServiceTest(unittest.TestCase):
 
         retry = service.retry_current_box()
         self.assertEqual("未满箱", retry.result)
-        self.assertEqual(state.offline_order_no, service.state.offline_order_no)
+
+    def test_new_customer_barcode_format_uses_excel_prefix(self) -> None:
+        self.database.upsert_materials([MATERIAL_NEW])
+        self.materials.reload()
+        service = self._service(
+            box_count=2,
+            material_a_count=2,
+            pdf=FakePdfGenerator(),
+            printer=FakePrinter(),
+        )
+        first = service.process_barcode(BARCODE_NEW1)
+        self.assertTrue(first.accepted)
+        self.assertEqual("5664620FA2#01", first.state.material_code)
+        self.assertEqual("566462001FA2", first.state.customer_material_code)
+
+    def test_mii_success_uses_s_code_on_printed_label(self) -> None:
+        pdf = FakePdfGenerator()
+        printer = FakePrinter()
+        mii = FakeMii()
+        service = ScannerService(
+            RuntimeConfig(
+                box_scan_count=2,
+                output_pdf_dir=str(self.root / "pdf"),
+                database_path=str(self.root / "data.db"),
+                material_excel_path=str(self.root / "not-needed.xlsx"),
+                reserved1_sub="2918",
+                mii_enabled=True,
+                mii_min_retry_interval_seconds=60,
+                mii_max_retry_count=3,
+            ),
+            self.database,
+            self.materials,
+            pdf_generator=pdf,
+            printer=printer,
+            mii_client=mii,
+        )
+        order_no = service.state.offline_order_no
+
+        service.process_barcode(BARCODE_A1)
+        completed = service.process_barcode(BARCODE_A2)
+
+        self.assertEqual("打印完成", completed.result)
+        self.assertEqual(1, len(mii.calls))
+        self.assertEqual("566462001FA2", mii.calls[0]["customer_material_code"])
+        self.assertEqual(2, mii.calls[0]["required_count"])
+        self.assertEqual("S123456965", pdf.labels[0].offline_order_no)
+        order = self.database.get_order(order_no)
+        self.assertEqual("1368123456965", order["mii_hu_code"])
+        self.assertEqual("S123456965", order["mii_s_code"])
+        self.assertEqual(
+            2, len(self.database.history_by_hu("1368123456965"))
+        )
+        self.assertEqual(2, len(self.database.history_by_hu("S123456965")))
+        self.assertEqual(2, len(self.database.history_by_hu("123456965")))
+
+    def test_s_code_is_s_plus_last_nine_hu_digits(self) -> None:
+        self.assertEqual("S123456965", build_s_code("1368123456965"))
+        self.assertEqual("", build_s_code("12345678"))
+        parsed = _parse_response(
+            "<Status>PRODUCED</Status><HUCode>1368123456965</HUCode>"
+        )
+        self.assertTrue(parsed.success)
+        self.assertEqual("S123456965", parsed.s_code)
+
+    def test_mii_url_uses_config_and_dynamic_box_data(self) -> None:
+        client = MiiClient(
+            enabled=True,
+            base_url="https://mii.example:50001/XMII/",
+            login_name="zhangto",
+            login_password="fau",
+            plant="1680",
+            user_id="zhangto",
+            workcenter="WC00311",
+            packaging_material="GENERIC_PACN",
+            information="TEST",
+        )
+        query = parse_qs(
+            urlsplit(
+                client._build_url(
+                    {
+                        "offline_order_no": "INTERNAL-1",
+                        "customer_material_code": "566462001FA2",
+                        "required_count": 44,
+                    }
+                )
+            ).query,
+            keep_blank_values=True,
+        )
+        self.assertEqual(["566462001FA2"], query["PartNumber"])
+        self.assertEqual(["44"], query["Quantity"])
+        self.assertEqual(["WC00311"], query["Workcenter"])
+        self.assertEqual(["TEST"], query["Information"])
+        self.assertEqual([""], query["HUCode"])
+
+    def test_mii_failure_stops_before_pdf_and_limits_retry(self) -> None:
+        pdf = FakePdfGenerator()
+        mii = FakeMii(
+            MiiUploadResult(False, status="ERROR", message="模拟MII失败")
+        )
+        service = ScannerService(
+            RuntimeConfig(
+                box_scan_count=2,
+                output_pdf_dir=str(self.root / "pdf"),
+                database_path=str(self.root / "data.db"),
+                material_excel_path=str(self.root / "not-needed.xlsx"),
+                mii_enabled=True,
+                mii_min_retry_interval_seconds=60,
+                mii_max_retry_count=3,
+            ),
+            self.database,
+            self.materials,
+            pdf_generator=pdf,
+            printer=FakePrinter(),
+            mii_client=mii,
+        )
+        order_no = service.state.offline_order_no
+
+        service.process_barcode(BARCODE_A1)
+        failed = service.process_barcode(BARCODE_A2)
+        retry = service.retry_current_box()
+
+        self.assertEqual("MII报产失败", failed.result)
+        self.assertEqual("MII报产失败", retry.result)
+        self.assertEqual([], pdf.labels)
+        self.assertEqual("MII_FAILED", self.database.get_order(order_no)["status"])
+        self.assertEqual(order_no, service.state.offline_order_no)
 
 
 if __name__ == "__main__":

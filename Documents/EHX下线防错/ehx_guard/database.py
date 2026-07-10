@@ -67,6 +67,13 @@ class Database:
                     print_error TEXT NOT NULL DEFAULT '',
                     printed_at TEXT,
                     reprint_count INTEGER NOT NULL DEFAULT 0,
+                    mii_status TEXT NOT NULL DEFAULT '',
+                    mii_hu_code TEXT NOT NULL DEFAULT '',
+                    mii_s_code TEXT NOT NULL DEFAULT '',
+                    mii_error TEXT NOT NULL DEFAULT '',
+                    mii_attempt_count INTEGER NOT NULL DEFAULT 0,
+                    mii_last_attempt_at TEXT,
+                    mii_response TEXT NOT NULL DEFAULT '',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -110,6 +117,14 @@ class Database:
                 """
             )
             self._migrate_schema(connection)
+            connection.executescript(
+                """
+                CREATE INDEX IF NOT EXISTS idx_orders_mii_hu
+                    ON offline_orders(mii_hu_code);
+                CREATE INDEX IF NOT EXISTS idx_orders_mii_s
+                    ON offline_orders(mii_s_code);
+                """
+            )
 
     def _migrate_schema(self, connection: sqlite3.Connection) -> None:
         material_columns = {
@@ -146,6 +161,28 @@ class Database:
             connection.execute(
                 "UPDATE offline_orders SET required_count = qty"
             )
+        order_defaults = {
+            "mii_status": "TEXT NOT NULL DEFAULT ''",
+            "mii_hu_code": "TEXT NOT NULL DEFAULT ''",
+            "mii_s_code": "TEXT NOT NULL DEFAULT ''",
+            "mii_error": "TEXT NOT NULL DEFAULT ''",
+            "mii_attempt_count": "INTEGER NOT NULL DEFAULT 0",
+            "mii_last_attempt_at": "TEXT",
+            "mii_response": "TEXT NOT NULL DEFAULT ''",
+        }
+        for name, definition in order_defaults.items():
+            if name not in order_columns:
+                connection.execute(
+                    f"ALTER TABLE offline_orders ADD COLUMN {name} {definition}"
+                )
+        connection.execute(
+            """
+            UPDATE offline_orders
+            SET mii_s_code = 'S' || substr(mii_hu_code, -9)
+            WHERE length(mii_hu_code) >= 9
+              AND (mii_s_code = '' OR mii_s_code NOT LIKE 'S%')
+            """
+        )
 
         scan_columns = {
             row["name"]
@@ -332,7 +369,8 @@ class Database:
                 SELECT * FROM offline_orders
                 WHERE status IN (
                     'SCANNING', 'PDF_GENERATING', 'PDF_FAILED',
-                    'READY_TO_PRINT', 'PRINT_FAILED'
+                    'READY_TO_PRINT', 'PRINT_FAILED',
+                    'MII_UPLOADING', 'MII_FAILED', 'MII_DONE'
                 )
                 ORDER BY id DESC
                 LIMIT 1
@@ -485,6 +523,75 @@ class Database:
                 parameters,
             )
 
+    def mark_mii_attempt(self, offline_order_no: str) -> None:
+        now = _now()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE offline_orders SET
+                    status = 'MII_UPLOADING',
+                    mii_status = 'UPLOADING',
+                    mii_attempt_count = mii_attempt_count + 1,
+                    mii_last_attempt_at = ?,
+                    updated_at = ?
+                WHERE offline_order_no = ?
+                """,
+                (now, now, offline_order_no),
+            )
+
+    def mark_mii_result(
+        self,
+        offline_order_no: str,
+        *,
+        success: bool,
+        status: str = "",
+        hu_code: str = "",
+        s_code: str = "",
+        message: str = "",
+        raw_response: str = "",
+    ) -> None:
+        now = _now()
+        order_status = "MII_DONE" if success else "MII_FAILED"
+        mii_status = status or ("PRODUCED" if success else "FAILED")
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE offline_orders SET
+                    status = ?,
+                    mii_status = ?,
+                    mii_hu_code = ?,
+                    mii_s_code = ?,
+                    mii_error = ?,
+                    mii_response = ?,
+                    print_error = ?,
+                    updated_at = ?
+                WHERE offline_order_no = ?
+                """,
+                (
+                    order_status,
+                    mii_status,
+                    hu_code,
+                    s_code,
+                    "" if success else message,
+                    raw_response,
+                    "" if success else message,
+                    now,
+                    offline_order_no,
+                ),
+            )
+
+    def set_local_s_code(self, offline_order_no: str, s_code: str) -> None:
+        """MII 未启用或未返回批次号时，写入本地生成的 S 码。"""
+
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE offline_orders SET mii_s_code = ?, updated_at = ?
+                WHERE offline_order_no = ?
+                """,
+                (s_code, _now(), offline_order_no),
+            )
+
     def reset_order(
         self,
         offline_order_no: str,
@@ -572,6 +679,19 @@ class Database:
             "WHERE r.offline_order_no = ? ORDER BY r.id", (offline_order_no,)
         )
 
+    def history_by_hu(self, hu_or_s_code: str) -> list[dict[str, Any]]:
+        value = str(hu_or_s_code or "").strip()
+        normalized_s_code = (
+            value if value.upper().startswith("S") else f"S{value}"
+        )
+        return self._query_records(
+            """
+            WHERE o.mii_hu_code = ? OR upper(o.mii_s_code) = upper(?)
+            ORDER BY r.scan_index, r.id
+            """,
+            (value, normalized_s_code),
+        )
+
     def history_by_date(self, value: date | str) -> list[dict[str, Any]]:
         date_text = value.isoformat() if isinstance(value, date) else str(value)
         return self._query_records(
@@ -596,7 +716,13 @@ class Database:
                     o.pdf_path,
                     o.printed_at,
                     o.reprint_count,
-                    o.required_count
+                    o.required_count,
+                    o.mii_status,
+                    o.mii_hu_code,
+                    o.mii_s_code,
+                    o.mii_error,
+                    o.mii_attempt_count,
+                    o.mii_last_attempt_at
                 FROM scan_records r
                 JOIN offline_orders o
                   ON o.offline_order_no = r.offline_order_no

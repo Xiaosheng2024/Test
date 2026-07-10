@@ -14,7 +14,7 @@ from typing import Any
 from .config import RuntimeConfig
 from .database import Database
 from .materials import Material, MaterialRepository
-from .mii_client import MiiClient
+from .mii_client import MiiClient, build_s_code
 from .pdf_generator import A5PdfGenerator, OfflineOrderLabel
 from .printing import (
     DebugNoPrintPrinter,
@@ -96,15 +96,42 @@ class ScannerService:
             self.printer = DebugNoPrintPrinter(
                 logger=getattr(self.pdf_generator, "logger", self.logger),
             )
-        self.mii_client = mii_client or MiiClient(
-            enabled=config.mii_enabled,
-            base_url=config.mii_base_url,
-            token=config.mii_token,
-            logger=self.logger,
-        )
+        self.mii_client = mii_client or self._make_mii_client(config)
         self._order = self.database.get_recoverable_order()
         if self._order is None:
             self._order = self._create_next_order()
+
+    def _make_mii_client(self, config: RuntimeConfig) -> MiiClient:
+        return MiiClient(
+            enabled=config.mii_enabled,
+            base_url=config.mii_base_url,
+            token=config.mii_token,
+            transaction=config.mii_transaction,
+            output_parameter=config.mii_output_parameter,
+            login_name=config.mii_login_name,
+            login_password=config.mii_login_password,
+            plant=config.mii_plant,
+            user_id=config.mii_user_id,
+            customer_code=config.mii_customer_code,
+            production_version=config.mii_production_version,
+            production_shift=config.mii_production_shift,
+            workcenter=config.mii_workcenter,
+            packaging_material=config.mii_packaging_material,
+            information_mode=config.mii_information_mode,
+            information=config.mii_information,
+            produce_reverse=config.mii_produce_reverse,
+            content_type=config.mii_content_type,
+            timeout_seconds=config.mii_timeout_seconds,
+            logger=self.logger,
+        )
+
+    def apply_runtime_config(self, config: RuntimeConfig) -> None:
+        """设置保存后立即更新打印机和 MII 客户端。"""
+
+        self.config = config
+        if hasattr(self.printer, "printer_name"):
+            self.printer.printer_name = config.printer_name
+        self.mii_client = self._make_mii_client(config)
 
     @property
     def state(self) -> BoxState:
@@ -321,13 +348,27 @@ class ScannerService:
             )
 
         order = self.database.get_order(current.offline_order_no)
+        if self.config.mii_enabled and not order.get("mii_s_code"):
+            mii_outcome = self._upload_mii_once(order, triggering_barcode)
+            if mii_outcome is not None:
+                return mii_outcome
+            order = self.database.get_order(current.offline_order_no)
+
         pdf_path = Path(order["pdf_path"]) if order["pdf_path"] else None
         if pdf_path is None or not pdf_path.is_file():
             output_dir = Path(self.config.output_pdf_dir)
             output_dir.mkdir(parents=True, exist_ok=True)
             pdf_path = output_dir / f"{current.offline_order_no}.pdf"
+            # 客户批次/下线单优先来自 MII HU；MII 未启用或未返回时，
+            # 本地生成一个同样符合 S+9位数字 规则的批次号，避免条码为空。
+            print_order_no = order.get("mii_s_code") or ""
+            if not print_order_no:
+                print_order_no = f"S{int(order['id']):09d}"
+                self.database.set_local_s_code(
+                    current.offline_order_no, print_order_no
+                )
             label = OfflineOrderLabel(
-                offline_order_no=current.offline_order_no,
+                offline_order_no=print_order_no,
                 material_code=current.material_code,
                 material_name=current.material_name,
                 customer_material_code=current.customer_material_code,
@@ -390,18 +431,6 @@ class ScannerService:
             )
         else:
             self.database.mark_printed(current.offline_order_no)
-        completed_order = self.database.get_order(current.offline_order_no)
-        self.mii_client.upload_offline_order(
-            {
-                **completed_order,
-                "barcodes": [
-                    row["barcode"]
-                    for row in self.database.successful_scans(
-                        current.offline_order_no
-                    )
-                ],
-            }
-        )
         self._order = self._create_next_order()
         result_name = "PDF已生成" if print_result.skipped else "打印完成"
         result_message = (
@@ -418,6 +447,91 @@ class ScannerService:
             box_completed=True,
             printed=not print_result.skipped,
         )
+
+    def _upload_mii_once(
+        self, order: dict[str, Any], triggering_barcode: str
+    ) -> ScanOutcome | None:
+        if not self._mii_retry_allowed(order):
+            return ScanOutcome(
+                True,
+                "MII报产失败",
+                order.get("print_error")
+                or order.get("mii_error")
+                or "MII重试过于频繁或次数已达上限",
+                triggering_barcode,
+                self.state,
+                box_completed=True,
+            )
+
+        self.database.mark_mii_attempt(order["offline_order_no"])
+        upload_data = {
+            **self.database.get_order(order["offline_order_no"]),
+            "barcodes": [
+                row["barcode"]
+                for row in self.database.successful_scans(
+                    order["offline_order_no"]
+                )
+            ],
+        }
+        result = self.mii_client.upload_offline_order(upload_data)
+        hu_code = str(getattr(result, "hu_code", "") or "").strip()
+        s_code = build_s_code(hu_code)
+        success = bool(getattr(result, "success", result is True)) and bool(
+            s_code
+        )
+        message = str(getattr(result, "message", "") or "")
+        if not s_code and hu_code:
+            message = "MII返回的HUCode不足9位，已停止打印"
+        self.database.mark_mii_result(
+            order["offline_order_no"],
+            success=success,
+            status=getattr(result, "status", ""),
+            hu_code=hu_code,
+            s_code=s_code,
+            message=message,
+            raw_response=getattr(result, "raw_response", ""),
+        )
+        if success:
+            return None
+        return ScanOutcome(
+            True,
+            "MII报产失败",
+            f"MII报产失败，已停止打印并保留当前箱：{message}",
+            triggering_barcode,
+            self.state,
+            box_completed=True,
+        )
+
+    def _mii_retry_allowed(self, order: dict[str, Any]) -> bool:
+        attempts = int(order.get("mii_attempt_count") or 0)
+        if attempts >= self.config.mii_max_retry_count:
+            self.database.update_order_status(
+                order["offline_order_no"],
+                "MII_FAILED",
+                print_error=(
+                    f"MII报产失败次数已达上限 "
+                    f"{self.config.mii_max_retry_count}，请联系管理员"
+                ),
+            )
+            return False
+        last_attempt = order.get("mii_last_attempt_at")
+        if last_attempt:
+            try:
+                last_time = datetime.fromisoformat(last_attempt)
+                elapsed = (
+                    datetime.now().astimezone() - last_time
+                ).total_seconds()
+            except ValueError:
+                elapsed = self.config.mii_min_retry_interval_seconds
+            if elapsed < self.config.mii_min_retry_interval_seconds:
+                wait = int(self.config.mii_min_retry_interval_seconds - elapsed)
+                self.database.update_order_status(
+                    order["offline_order_no"],
+                    "MII_FAILED",
+                    print_error=f"MII重试过于频繁，请 {wait} 秒后再试",
+                )
+                return False
+        return True
 
     def _create_next_order(
         self, initial_required_count: int = 0
